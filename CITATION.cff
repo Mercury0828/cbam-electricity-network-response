@@ -14,3 +14,8 @@ authors:
 license: MIT
 repository-code: "https://github.com/Mercury0828/cbam-electricity-network-response"
 type: software
+doi: 10.5281/zenodo.22947112
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.22947112
+    description: Zenodo archive, all versions

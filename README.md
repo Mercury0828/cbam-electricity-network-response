@@ -166,4 +166,4 @@ third-party data it derives from remain subject to their providers' terms (see `
 
 ## Citation
 
-See `CITATION.cff`. The citation will be updated with the journal reference and the archive DOI.
+See `CITATION.cff`. This code repository is archived at Zenodo, https://doi.org/10.5281/zenodo.22947112 (all versions; the DOI resolves to the latest release); the companion data repository at https://doi.org/10.5281/zenodo.22947118. The citation will be updated with the journal reference.

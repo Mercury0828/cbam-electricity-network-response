@@ -64,6 +64,18 @@ the environment only and never written to disk.
 | `fetch/jao.py`, `fetch/jao_outage_check.py` | JAO capacity auctions (GB links; Serbia-Hungary around the outages) |
 | `fetch/gb_fr.py`, `fetch/rs_hu.py`, `fetch/ec_zone.py` | border-month and zone data of the redispatch comparator |
 
+### Price inputs
+
+`src/wedge/gnn/prices.py` and `src/wedge/build_inputs.py` read public price files from `data/inputs/source/`. The
+data repository contains the World Bank monthly commodity prices, the ACER LNG price assessments, the ECB exchange
+rates and the UK allowance price table. The EEX EU ETS primary auction reports are not redistributed; download them
+into `data/inputs/source/eex/`:
+
+```
+https://public.eex-group.com/eex/eua-auction-report/emission-spot-primary-market-auction-report-2019-data.xls
+https://public.eex-group.com/eex/eua-auction-report/emission-spot-primary-market-auction-report-<YEAR>-data.xlsx   (YEAR = 2020 ... 2026)
+```
+
 ## Reproducing the paper
 
 All graph-model scripts read `WEDGE_GNN_SPEC=v4`; the network-response scripts also read `NETRESP_TAG` (`r2` for the

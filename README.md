@@ -32,15 +32,25 @@ paper/tables, paper/figs    output folders for the LaTeX tables and the figures
 
 ## Environment
 
-The graph-model results were produced with Python 3.12 and the packages in `requirements-gnn.txt` (PyTorch 2.5.1 with
-CUDA 12.1, XGBoost 3.4.1). The redispatch comparator and the trading comparisons (`tools/make_all.py`) were produced
-with Python 3.11 and `requirements-core.txt`. XGBoost results depend on the version, so use the pinned versions to
-reproduce the numbers exactly.
+Two Python environments reproduce the paper exactly. XGBoost results depend on the version, so use the pinned
+versions.
+
+| Environment | Python | Packages | Used for |
+|---|---|---|---|
+| `.venv-gnn` | 3.12 | `requirements-gnn.txt` (PyTorch 2.5.1 with CUDA 12.1, XGBoost 3.4.1) | graph model, network-response layer, outage analyses, charges, the LaTeX tables |
+| `.venv-core` | 3.11 | `requirements-core.txt` (matplotlib 3.10.8) | redispatch comparator, trading comparisons, the figures of the paper |
 
 ```
-python -m venv .venv-gnn
-.venv-gnn/bin/pip install -r requirements-gnn.txt      # Windows: .venv-gnn\Scripts\pip
+# Linux and macOS; on Windows replace bin/ by Scripts\ in every command of this README
+python3.12 -m venv .venv-gnn
+.venv-gnn/bin/pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+.venv-gnn/bin/pip install -r requirements-gnn.txt
+python3.11 -m venv .venv-core
+.venv-core/bin/pip install -r requirements-core.txt
 ```
+
+Every command below names its interpreter explicitly. Figure 1 is a TikZ drawing and needs a LaTeX installation with
+`pdflatex`.
 
 ## Data
 
@@ -78,53 +88,75 @@ https://public.eex-group.com/eex/eua-auction-report/emission-spot-primary-market
 
 ## Reproducing the paper
 
-All graph-model scripts read `WEDGE_GNN_SPEC=v4`; the network-response scripts also read `NETRESP_TAG` (`r2` for the
-main model, `r3` with `NETRESP_LAG=24` for the 24-hour-difference variant). `tools/run_gnn_pipeline.py` sets them.
-
-1. **Tables and figures from the processed artefacts** (minutes, no GPU):
+1. **Tables and figures from the processed artefacts** (minutes, no GPU, no raw downloads):
    ```
-   python tools/run_gnn_pipeline.py --stage outputs
+   .venv-gnn/bin/python src/wedge/gnn/make_tables.py     # 13 LaTeX tables  -> paper/tables/
+   .venv-core/bin/python src/wedge/figures.py           # 7 data figures   -> paper/figs/
+   cd paper/figs && pdflatex fig_schematic.tex && cd ../..   # Figure 1 (TikZ schematic)
    ```
-   `src/wedge/gnn/make_tables.py` writes the LaTeX tables to `paper/tables/` and `src/wedge/figures.py` the figures to
-   `paper/figs/`. The tables are identical to those of the paper in either environment. The figures of the paper were
-   drawn with matplotlib 3.10.8 (`requirements-core.txt`); with matplotlib 3.11.2 (`requirements-gnn.txt`) they differ
-   only in rendering details.
+   A fresh clone of both repositories regenerated all 13 tables byte-identical and all 7 data figures pixel-identical
+   to those of the paper (checked on 2026-09-24). `.venv-gnn/bin/python tools/run_gnn_pipeline.py --stage outputs`
+   runs the first two commands with one interpreter; with the matplotlib 3.11.2 of `requirements-gnn.txt` the figures
+   differ from the paper's only in rendering details.
 2. **Re-running the analyses on the trained models** (outage estimates, network responses, charges):
    ```
-   python tools/run_gnn_pipeline.py --stage responses
-   python tools/run_gnn_pipeline.py --stage outages
-   python tools/run_gnn_pipeline.py --stage charges
+   .venv-gnn/bin/python tools/run_gnn_pipeline.py --stage responses
+   .venv-gnn/bin/python tools/run_gnn_pipeline.py --stage outages
+   .venv-gnn/bin/python tools/run_gnn_pipeline.py --stage charges
    ```
-   Some steps use the GPU (network re-solves, the recovery check); run GPU jobs one at a time. Three inputs of these
-   stages are raw downloads that the data repository does not redistribute: the outage-message archives read by
-   `outage_events.py`, `outage_v2.py` and `outage_v2_post.py` (download with `fetch/remit_ic.py` and
-   `fetch/umm_nordpool.py` into `data/raw/remit/` and `data/raw/umm/`), and the Elexon interconnector flows by cable
-   read by `net_taxbase.py` (download with `fetch/gnn_bulk.py` into `data/raw/gnn/gb/`). Every other step of stage 2
-   reads only the data repository.
-3. **From the raw data**: download the raw data (above), then
+   The runner sets `WEDGE_GNN_SPEC=v4` and, for the network-response scripts, `NETRESP_TAG` (`r2` for the main model,
+   `r3` with `NETRESP_LAG=24` for the 24-hour-difference variant); unset any other `NETRESP_*` or `WEDGE_*` variables
+   in the shell first. Some steps use the GPU (network re-solves, the recovery check); run GPU jobs one at a time.
+   Four inputs of these stages are raw downloads that the data repository does not redistribute. Download them first:
+   - outage-message archives read by `outage_events.py`, `outage_v2.py` and `outage_v2_post.py`:
+     `fetch/remit_ic.py` and `fetch/umm_nordpool.py` (into `data/raw/remit/` and `data/raw/umm/`);
+   - JAO daily auctions on the Serbia-Hungary border read by `outage_events.py`: `fetch/jao_outage_check.py` (needs
+     `JAO_API_TOKEN`; into `data/raw/jao/`);
+   - Elexon interconnector flows by cable read by `net_taxbase.py`: `fetch/gnn_bulk.py` (into `data/raw/gnn/gb/`).
+   Every other step of these stages reads only the data repository.
+3. **From the raw data**: download the raw data (see Data), then
    ```
-   python tools/run_gnn_pipeline.py --stage build
-   python tools/run_gnn_pipeline.py --stage train_graph
-   python tools/run_gnn_pipeline.py --stage train_netresp
+   .venv-gnn/bin/python tools/run_gnn_pipeline.py --stage build
+   .venv-gnn/bin/python tools/run_gnn_pipeline.py --stage train_graph
+   .venv-gnn/bin/python tools/run_gnn_pipeline.py --stage train_netresp
    ```
-   and continue with step 2. `python tools/run_gnn_pipeline.py --list` prints every command.
-4. **Redispatch comparator and trading comparisons**: `python tools/make_all.py` (Python 3.11 environment).
+   and continue with step 2. `.venv-gnn/bin/python tools/run_gnn_pipeline.py --list` prints every command.
+4. **Redispatch comparator, liability scenarios and trading comparisons** (read the raw downloads of
+   `fetch/gb_fr.py`, `fetch/rs_hu.py`, `fetch/ec_zone.py` and `fetch/jao.py`):
+   ```
+   .venv-core/bin/python tools/make_all.py
+   .venv-core/bin/python src/wedge/aggregate.py
+   .venv-core/bin/python src/wedge/did_d1.py
+   .venv-core/bin/python src/wedge/cap_event_rev2.py
+   .venv-core/bin/python src/wedge/cap_event_rev3.py
+   .venv-core/bin/python src/wedge/boot_stability.py
+   .venv-core/bin/python src/wedge/onset_curves.py
+   ```
 
-Main scripts behind the results:
+### Paper-to-artefact index
 
-| Result | Scripts (`src/wedge/gnn/` unless stated) |
-|---|---|
-| Outage responses, estimator slopes, events and subsets | `outage_v2.py`, `outage_v2_post.py`, `outage_events.py`, `outage_subsets.py` |
-| Model against the outages (BritNed, Nemo Link, GB side) | `outage_model_compare.py`, `outage_pooled_gb.py` |
-| Held-out outages of ten further HVDC links | `outage_multi.py`, `outage_multi_summary.py`, `outage_multi_confirmed.py` |
-| Serbia-Hungary outages | `outage_rs.py`, `outage_rs_events.py` |
-| Recovery check of the outage estimator | `outage_synthetic.py` |
-| Prediction accuracy and local emission responses | `evaluate.py`, `response_check.py`, `marginal.py` |
-| Network responses on the charged borders, feasibility | `netresp.py charged`, `net_summary.py`, `net_feasibility.py` |
-| Reference charge and rule comparison | `net_rules.py`, `net_states.py` |
-| Charged imports along the response path | `net_taxbase.py` |
-| Information frontier and learned rules | `net_frontier.py`, `rule_learning.py` |
-| Redispatch comparator, trading comparisons | `src/wedge/*.py` via `tools/make_all.py` |
+Every number in the paper is stored in the data repository. Generated means that the script above writes the table
+or figure file; typed means that the table is written in the manuscript from the listed artefact.
+
+| Paper item | Produced by | Artefact in the data repository | Output |
+|---|---|---|---|
+| Figure 1 | `paper/figs/fig_schematic.tex` (TikZ) | — | generated (pdflatex) |
+| Tables 1-4 (related studies, symbols, sources, rules) | manuscript | — | typed, no results |
+| Figure 2, Tables 7, A.1, A.5 | `gnn/outage_v2.py`, `gnn/outage_model_compare.py`, `gnn/outage_pooled_gb.py`, `gnn/outage_subsets.py` | `processed/gnn/outage_v2_v4.json`, `outage_model_compare_v4.json`, `outage_pooled_gb_v4.json`, `outage_subsets_v4.json` | generated |
+| Figure 3 | `gnn/outage_multi.py`, `gnn/outage_multi_summary.py` | `processed/gnn/outage_multi_v4.json`, `outage_multi_summary_v4.json` | generated |
+| Tables 5, 6 | `gnn/evaluate.py`, `gnn/response_check.py` | `processed/gnn/v4/evaluate.json`, `response_check.json` | generated |
+| Figure 4, Tables 8, B.1 | `gnn/netresp.py charged`, `gnn/net_summary.py` | `processed/gnn/netresp_r2_v4/`, `netresp_r3_v4/` (`charged_summary.json`) | generated |
+| Figure 5, Table 9 | `gnn/net_rules.py`, `gnn/net_states.py`, `gnn/net_taxbase.py` | `processed/gnn/netresp_r2_v4/net_states.json`, `net_taxbase.json` | generated |
+| Figure 6 and the information frontier | `gnn/net_frontier.py`, `gnn/rule_learning.py` | `processed/gnn/netresp_r2_v4/net_frontier.json` | generated |
+| Table 10 | `aggregate.py` | `processed/aggregate_2026h1.json` | typed |
+| Table 11 | `gnn/net_states.py`, `t2_ablation.py`, `t4_baselines.py` | `processed/gnn/netresp_r2_v4/net_states.json`, `processed/t2_ablation.json`, `t4_baselines.json` | generated |
+| Tables A.2-A.4, A.6 | `gnn/outage_synthetic.py`, `gnn/outage_events.py`, `gnn/outage_rs_events.py` | `processed/gnn/outage_synthetic10_v4.json`, `outage_events_v4.json`, `outage_rs_events_v4.json` | generated |
+| Figures D.1, D.2 | `onset_curves.py`, `cap_event_rev2.py` | `processed/onset_curves.json`, `cap_distribution_rev.json`, `cap_event_study_rev.json` | generated |
+| Table D.1 | `did_d1.py`, `cap_event_rev3.py`, `boot_stability.py` | `processed/did_d1_directional.json`, `cap_event_rev_links.json`, `boot_stability.json` | typed |
+| Table E.1 | `frontier.py`, `d2_money.py`, `d2_frontier.py`, `cap_price.py`, `r2_cert.py` | `processed/frontier_gb.json`, `d2_money.json`, `d2_frontier.json`, `cap_price.json`, `r2_cert.json` | typed |
+| Supplementary data | `gnn/outage_events.py` | `processed/gnn/outage_events_v4.csv` | generated |
+
+Scripts are in `src/wedge/` (the `gnn/` prefix is `src/wedge/gnn/`).
 
 ## License
 

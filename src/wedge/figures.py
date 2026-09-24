@@ -503,7 +503,7 @@ def fig_outage_multi(fes="A_block"):
 
 
 def main():
-    for f in (fig_trading, fig_onset, fig_outage_v2, fig_netresp, fig_rule_regret_net, fig_regime_net):
+    for f in (fig_trading, fig_onset, fig_outage_v2, fig_outage_multi, fig_netresp, fig_rule_regret_net, fig_regime_net):
         f()
         print("wrote", f.__name__)
 

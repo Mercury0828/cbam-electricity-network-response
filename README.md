@@ -86,14 +86,21 @@ main model, `r3` with `NETRESP_LAG=24` for the 24-hour-difference variant). `too
    python tools/run_gnn_pipeline.py --stage outputs
    ```
    `src/wedge/gnn/make_tables.py` writes the LaTeX tables to `paper/tables/` and `src/wedge/figures.py` the figures to
-   `paper/figs/`.
+   `paper/figs/`. The tables are identical to those of the paper in either environment. The figures of the paper were
+   drawn with matplotlib 3.10.8 (`requirements-core.txt`); with matplotlib 3.11.2 (`requirements-gnn.txt`) they differ
+   only in rendering details.
 2. **Re-running the analyses on the trained models** (outage estimates, network responses, charges):
    ```
    python tools/run_gnn_pipeline.py --stage responses
    python tools/run_gnn_pipeline.py --stage outages
    python tools/run_gnn_pipeline.py --stage charges
    ```
-   Some steps use the GPU (network re-solves, the recovery check); run GPU jobs one at a time.
+   Some steps use the GPU (network re-solves, the recovery check); run GPU jobs one at a time. Three inputs of these
+   stages are raw downloads that the data repository does not redistribute: the outage-message archives read by
+   `outage_events.py`, `outage_v2.py` and `outage_v2_post.py` (download with `fetch/remit_ic.py` and
+   `fetch/umm_nordpool.py` into `data/raw/remit/` and `data/raw/umm/`), and the Elexon interconnector flows by cable
+   read by `net_taxbase.py` (download with `fetch/gnn_bulk.py` into `data/raw/gnn/gb/`). Every other step of stage 2
+   reads only the data repository.
 3. **From the raw data**: download the raw data (above), then
    ```
    python tools/run_gnn_pipeline.py --stage build

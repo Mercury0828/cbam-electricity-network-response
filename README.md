@@ -41,9 +41,10 @@ versions.
 | `.venv-core` | 3.11 | `requirements-core.txt` (matplotlib 3.10.8) | redispatch comparator, trading comparisons, the figures of the paper |
 
 ```
-# Linux and macOS; on Windows replace bin/ by Scripts\ in every command of this README
+# on Windows replace bin/ by Scripts\ in every command of this README
 python3.12 -m venv .venv-gnn
-.venv-gnn/bin/pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+.venv-gnn/bin/pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121   # Linux or Windows with CUDA 12.1
+# macOS or no CUDA GPU instead: .venv-gnn/bin/pip install torch==2.5.1   (the tables and figures need no GPU)
 .venv-gnn/bin/pip install -r requirements-gnn.txt
 python3.11 -m venv .venv-core
 .venv-core/bin/pip install -r requirements-core.txt

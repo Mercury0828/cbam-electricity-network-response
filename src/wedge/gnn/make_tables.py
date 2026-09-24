@@ -114,7 +114,7 @@ def regret_table():
     T = json.loads((G / "netresp_r2_v4" / "net_taxbase.json").read_text(encoding="utf-8"))
     lines += [r"\midrule", r"\multicolumn{6}{l}{\textit{Along the response path, $|a\chi_\ell-u|$}} \\"]
     chi = [f"{T['_summary'][b.split('|')[0]]['chi']:.2f}" for b, st in cols]           # hourly median over models
-    lines.append(r"Charged-import retention $\chi_\ell$ & " + " & ".join(chi) + r" \\")
+    lines.append(r"Fall in charged imports $\chi_\ell$ & " + " & ".join(chi) + r" \\")
     for lab, k26, kno in rows:
         cells = []
         for b, st in cols:
@@ -156,7 +156,7 @@ def robust_table():
     rows = [("Network model", net("graph")), ("Network model, node-local encoder", net("local")),
             ("Two-zone baseline, graph model", net("graph", True)), ("Redispatch comparator", old2("base")),
             ("Hourly average factors", old4("AEF")), ("Regression marginal factors", old4("REG")),
-            ("Redispatch, joint efficiencies", old2("joint")), ("Redispatch, repaired hours dropped", old2("exclude")),
+            ("Redispatch, same efficiency on both sides", old2("joint")), ("Redispatch, repaired hours dropped", old2("exclude")),
             ("Redispatch, no zero floor", old2("no_floor"))]
     lines = [r"\begin{tabular}{L{0.3\textwidth}C{0.14\textwidth}C{0.14\textwidth}C{0.14\textwidth}C{0.14\textwidth}}",
              r"\toprule",

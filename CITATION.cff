@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the paper."
+title: "Where charged electricity imports are replaced: interconnector outages and a graph network-response model for the EU CBAM (code)"
+authors:
+  - family-names: Tong
+    given-names: Zirui
+    affiliation: University of Houston
+  - family-names: Shen
+    given-names: Jiachen
+    affiliation: University of Houston
+  - family-names: Shi
+    given-names: Jian
+    affiliation: University of Houston
+license: MIT
+repository-code: "https://github.com/Mercury0828/cbam-electricity-network-response"
+type: software

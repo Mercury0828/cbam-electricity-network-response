@@ -92,13 +92,13 @@ https://public.eex-group.com/eex/eua-auction-report/emission-spot-primary-market
 1. **Tables and figures from the processed artefacts** (minutes, no GPU, no raw downloads):
    ```
    .venv-gnn/bin/python src/wedge/gnn/make_tables.py     # 13 LaTeX tables  -> paper/tables/
-   .venv-core/bin/python src/wedge/figures.py           # 7 data figures   -> paper/figs/
+   .venv-core/bin/python src/wedge/figures.py           # 9 data figures   -> paper/figs/
    cd paper/figs && pdflatex fig_schematic.tex && cd ../..   # Figure 1 (TikZ schematic)
    ```
-   A fresh clone of both repositories regenerated all 13 tables byte-identical and all 7 data figures pixel-identical
-   to those of the paper (checked on 2026-09-24). `.venv-gnn/bin/python tools/run_gnn_pipeline.py --stage outputs`
-   runs the first two commands with one interpreter; with the matplotlib 3.11.2 of `requirements-gnn.txt` the figures
-   differ from the paper's only in rendering details.
+   A fresh clone of both repositories regenerated all 13 tables byte-identical and all data figures pixel-identical
+   to those of the paper (checked on 2026-09-24). `.venv-core/bin/python tools/run_gnn_pipeline.py --stage outputs`
+   runs the first two commands with the core environment, which reproduces the tables identically and has the map
+   packages; `.venv-gnn` lacks them.
 2. **Re-running the analyses on the trained models** (outage estimates, network responses, charges):
    ```
    .venv-gnn/bin/python tools/run_gnn_pipeline.py --stage responses
@@ -143,12 +143,14 @@ or figure file; typed means that the table is written in the manuscript from the
 |---|---|---|---|
 | Figure 1 | `paper/figs/fig_schematic.tex` (TikZ) | — | generated (pdflatex) |
 | Tables 1-4 (related studies, symbols, sources, rules) | manuscript | — | typed, no results |
-| Figure 2, Tables 7, A.1, A.5 | `gnn/outage_v2.py`, `gnn/outage_model_compare.py`, `gnn/outage_pooled_gb.py`, `gnn/outage_subsets.py` | `processed/gnn/outage_v2_v4.json`, `outage_model_compare_v4.json`, `outage_pooled_gb_v4.json`, `outage_subsets_v4.json` | generated |
-| Figure 3 | `gnn/outage_multi.py`, `gnn/outage_multi_summary.py` | `processed/gnn/outage_multi_v4.json`, `outage_multi_summary_v4.json` | generated |
+| Figure 2 (map of zones and links) | `figures.py` (`fig_map_network`) | `processed/gnn/meta_v4.json`, `inputs/source/naturalearth/` | generated |
+| Figure 3, Tables 7, A.1, A.5 | `gnn/outage_v2.py`, `gnn/outage_model_compare.py`, `gnn/outage_pooled_gb.py`, `gnn/outage_subsets.py` | `processed/gnn/outage_v2_v4.json`, `outage_model_compare_v4.json`, `outage_pooled_gb_v4.json`, `outage_subsets_v4.json` | generated |
+| Figure 4 | `gnn/outage_multi.py`, `gnn/outage_multi_summary.py` | `processed/gnn/outage_multi_v4.json`, `outage_multi_summary_v4.json` | generated |
 | Tables 5, 6 | `gnn/evaluate.py`, `gnn/response_check.py` | `processed/gnn/v4/evaluate.json`, `response_check.json` | generated |
-| Figure 4, Tables 8, B.1 | `gnn/netresp.py charged`, `gnn/net_summary.py` | `processed/gnn/netresp_r2_v4/`, `netresp_r3_v4/` (`charged_summary.json`) | generated |
-| Figure 5, Table 9 | `gnn/net_rules.py`, `gnn/net_states.py`, `gnn/net_taxbase.py` | `processed/gnn/netresp_r2_v4/net_states.json`, `net_taxbase.json` | generated |
-| Figure 6 and the information frontier | `gnn/net_frontier.py`, `gnn/rule_learning.py` | `processed/gnn/netresp_r2_v4/net_frontier.json` | generated |
+| Figure 5, Tables 8, B.1 | `gnn/netresp.py charged`, `gnn/net_summary.py` | `processed/gnn/netresp_r2_v4/`, `netresp_r3_v4/` (`charged_summary.json`) | generated |
+| Figure 6 (map of the zone responses) | `gnn/net_summary.py` (`r_by_zone`), `figures.py` (`fig_map_response`) | `processed/gnn/netresp_r2_v4/charged_summary.json`, `inputs/source/naturalearth/` | generated |
+| Figure 7, Table 9 | `gnn/net_rules.py`, `gnn/net_states.py`, `gnn/net_taxbase.py` | `processed/gnn/netresp_r2_v4/net_states.json`, `net_taxbase.json` | generated |
+| Figure 8 and the information frontier | `gnn/net_frontier.py`, `gnn/rule_learning.py` | `processed/gnn/netresp_r2_v4/net_frontier.json` | generated |
 | Table 10 | `aggregate.py` | `processed/aggregate_2026h1.json` | typed |
 | Table 11 | `gnn/net_states.py`, `t2_ablation.py`, `t4_baselines.py` | `processed/gnn/netresp_r2_v4/net_states.json`, `processed/t2_ablation.json`, `t4_baselines.json` | generated |
 | Tables A.2-A.4, A.6 | `gnn/outage_synthetic.py`, `gnn/outage_events.py`, `gnn/outage_rs_events.py` | `processed/gnn/outage_synthetic10_v4.json`, `outage_events_v4.json`, `outage_rs_events_v4.json` | generated |

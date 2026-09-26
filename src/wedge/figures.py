@@ -40,10 +40,11 @@ def load(name):
     return json.loads((P / name).read_text(encoding="utf-8"))
 
 
-def save(fig, name):
+def save(fig, name, tight=True):
     OUT.mkdir(parents=True, exist_ok=True)
-    fig.savefig(OUT / f"{name}.pdf")
-    fig.savefig(OUT / f"{name}.png", dpi=300)
+    kw = {} if tight else {"bbox_inches": fig.bbox_inches}
+    fig.savefig(OUT / f"{name}.pdf", **kw)
+    fig.savefig(OUT / f"{name}.png", dpi=300, **kw)
     plt.close(fig)
 
 
@@ -502,8 +503,299 @@ def fig_outage_multi(fes="A_block"):
     save(fig, "fig_outage_multi")
 
 
+
+# ---------------------------------------------------------------------------------------------------------------
+# Maps of the study area and of the network responses (Natural Earth 1:50m boundaries, public domain,
+# data/inputs/source/naturalearth/; projected to ETRS89-LAEA Europe, EPSG:3035)
+
+NE = pathlib.Path("data/inputs/source/naturalearth")
+ZONE_ORDER = ["AT", "BE", "CH", "CZ", "DE", "DK", "ES", "FR", "GB", "HU", "IT", "NL", "NO", "PL", "RS", "SE", "SK",
+              "RO", "BG", "HR", "SI", "GR", "BA", "ME", "MK", "IE", "PT"]
+# anchor point of each zone (lon, lat): link end points and labels
+ANCHOR = {"AT": (14.6, 47.6), "BE": (4.6, 50.6), "CH": (8.1, 46.8), "CZ": (15.4, 49.8), "DE": (10.2, 51.2),
+          "DK": (9.6, 56.1), "ES": (-3.6, 40.2), "FR": (2.4, 46.7), "GB": (-1.6, 52.8), "HU": (19.4, 47.2),
+          "IT": (12.2, 43.3), "NL": (5.7, 52.3), "NO": (8.8, 60.9), "PL": (19.2, 52.1), "RS": (20.8, 44.0),
+          "SE": (15.2, 60.2), "SK": (19.6, 48.7), "RO": (24.9, 45.9), "BG": (25.3, 42.7), "HR": (15.9, 45.3),
+          "SI": (14.8, 46.1), "GR": (22.0, 39.4), "BA": (17.8, 44.2), "ME": (19.3, 42.8), "MK": (21.7, 41.6),
+          "IE": (-7.9, 53.4), "PT": (-8.0, 39.7)}
+CHARGED_LINKS = [("GB", "NL"), ("GB", "BE"), ("GB", "FR"), ("GB", "DK"), ("GB", "IE"),
+                 ("RS", "HU"), ("RS", "RO"), ("RS", "BG"), ("RS", "HR")]
+HELD_OUT = {("DE", "SE"): "Baltic Cable", ("GR", "IT"): "GRITA", ("NL", "NO"): "NorNed", ("PL", "SE"): "SwePol",
+            ("DK", "NL"): "COBRAcable", ("ME", "IT"): "MONITA", ("BE", "DE"): "ALEGrO", ("DE", "NO"): "NordLink",
+            ("GB", "NO"): "North Sea Link", ("DK", "GB"): "Viking Link"}
+_ZONES = {}
+
+
+def _zones():
+    """Zone polygons in EPSG:3035 (GB = Great Britain; IE = island of Ireland; DE = Germany and Luxembourg) and the
+    other countries as background, clipped to Europe."""
+    if _ZONES:
+        return _ZONES["z"], _ZONES["bg"], _ZONES["to3035"]
+    import geopandas as gpd
+    from pyproj import Transformer
+    from shapely.geometry import box
+    from shapely.ops import unary_union
+    clip = box(-12.5, 33.5, 36.0, 72.0)
+    cty = gpd.read_file(NE / "ne_50m_admin_0_countries.zip")
+    sub = gpd.read_file(NE / "ne_50m_admin_0_map_subunits.zip")
+    iso = cty.set_index("ISO_A2_EH")["geometry"]
+    su = sub.set_index("SU_A3")["geometry"]
+    geom = {}
+    for z in ZONE_ORDER:
+        if z == "GB":
+            g = unary_union([su["ENG"], su["SCT"], su["WLS"]])
+        elif z == "IE":
+            g = unary_union([iso["IE"], su["NIR"]])
+        elif z == "DE":
+            g = unary_union([iso["DE"], iso["LU"]])
+        else:
+            g = iso[z]
+        geom[z] = g.intersection(clip)
+    z = gpd.GeoDataFrame({"zone": list(geom)}, geometry=list(geom.values()), crs="EPSG:4326").to_crs(3035)
+    covered = unary_union(list(geom.values()))
+    bg = cty[~cty["ISO_A2_EH"].isin(ZONE_ORDER + ["LU"])].copy()
+    bg["geometry"] = bg.geometry.intersection(clip).difference(covered)
+    bg = bg[~bg.geometry.is_empty].to_crs(3035)
+    to3035 = Transformer.from_crs(4326, 3035, always_xy=True)
+    _ZONES.update(z=z, bg=bg, to3035=to3035)
+    return z, bg, to3035
+
+
+def _pt(code, to3035):
+    return to3035.transform(*ANCHOR[code])
+
+
+def _clip(gdf, xlim, ylim):
+    from shapely.geometry import box
+    out = gdf.copy()
+    out["geometry"] = out.geometry.intersection(box(xlim[0], ylim[0], xlim[1], ylim[1]))
+    return out[~out.geometry.is_empty]
+
+
+def _hatch(ax, geom, color, spacing=65e3, lw=0.5):
+    """Diagonal hatch drawn as line segments clipped to the polygon (no PDF pattern tiles)."""
+    from shapely.geometry import LineString
+    x0, y0, x1, y1 = geom.bounds
+    c = x0 - (y1 - y0)
+    while c < x1:
+        seg = LineString([(c, y0), (c + (y1 - y0), y1)]).intersection(geom)
+        for part in getattr(seg, "geoms", [seg]):
+            if part.geom_type == "LineString" and not part.is_empty:
+                xs, ys = part.xy
+                ax.plot(xs, ys, color=color, lw=lw, solid_capstyle="butt", zorder=4)
+        c += spacing
+
+
+def _base(ax, bg, xlim, ylim):
+    _clip(bg, xlim, ylim).plot(ax=ax, color="#f3f3f3", edgecolor="#d9d9d9", lw=0.4)
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+    ax.set_aspect("equal")
+    ax.set_axis_off()
+
+
+def _link(ax, a, b, to3035, rad=0.0, shrink=7, **kw):
+    from matplotlib.patches import FancyArrowPatch
+    p = FancyArrowPatch(_pt(a, to3035), _pt(b, to3035), connectionstyle=f"arc3,rad={rad}", shrinkA=shrink,
+                        shrinkB=shrink, **kw)
+    ax.add_patch(p)
+    return p
+
+
+def _halo(txt):
+    txt.set_path_effects([pe.withStroke(linewidth=2.2, foreground="white")])
+    return txt
+
+
+def _arc_mid(a, b, to3035, rad, t=0.5):
+    """Point at parameter t of the arc3 connection between two zone anchors (quadratic Bezier, arc3 control point)."""
+    (x1, y1), (x2, y2) = _pt(a, to3035), _pt(b, to3035)
+    cx, cy = (x1 + x2) / 2 + rad * (y2 - y1), (y1 + y2) / 2 - rad * (x2 - x1)
+    return ((1 - t) ** 2 * x1 + 2 * (1 - t) * t * cx + t ** 2 * x2,
+            (1 - t) ** 2 * y1 + 2 * (1 - t) * t * cy + t ** 2 * y2)
+
+
+HELD_OUT_ORDER = [("GB", "NO"), ("DK", "GB"), ("NL", "NO"), ("DK", "NL"), ("BE", "DE"), ("DE", "NO"), ("DE", "SE"),
+                  ("PL", "SE"), ("ME", "IT"), ("GR", "IT")]
+HELD_OUT_T = {("NL", "NO"): 0.74, ("DK", "NL"): 0.30, ("DE", "NO"): 0.72}
+# side of the arc on which each number sits (+1: towards the bulge of the arc, -1: the other side)
+HELD_OUT_SIDE = {("GB", "NO"): 1, ("DK", "GB"): -1, ("NL", "NO"): -1, ("DK", "NL"): -1, ("BE", "DE"): -1,
+                 ("DE", "NO"): 1, ("DE", "SE"): -1, ("PL", "SE"): 1, ("ME", "IT"): 1, ("GR", "IT"): -1}
+
+
+def _bezier(a, b, to3035, rad, n=240):
+    """Points of the arc3 connection between two zone anchors, as a quadratic Bezier (x, y arrays)."""
+    (x1, y1), (x2, y2) = _pt(a, to3035), _pt(b, to3035)
+    cx, cy = (x1 + x2) / 2 + rad * (y2 - y1), (y1 + y2) / 2 - rad * (x2 - x1)
+    t = np.linspace(0, 1, n)
+    return ((1 - t) ** 2 * x1 + 2 * (1 - t) * t * cx + t ** 2 * x2,
+            (1 - t) ** 2 * y1 + 2 * (1 - t) * t * cy + t ** 2 * y2)
+
+
+def _numbered_arcs(ax, links, to3035, obstacles, rad=0.18, end_gap=120e3, badge_gap=100e3, **kw):
+    """Draw each link as a dashed arc with a numbered badge sitting in a gap of the arc. The badge goes to the arc
+    point (or a point up to 30 km off the arc) farthest from the obstacle lines (borders, other arcs, badges already
+    placed), so no line passes under it."""
+    from shapely.geometry import LineString, Point
+    from shapely.ops import unary_union
+    arcs = {k: _bezier(a, b, to3035, rad) for k, (a, b) in enumerate(links)}
+    placed = []
+    for k, (a, b) in enumerate(links):
+        xs, ys = arcs[k]
+        seg = np.hypot(np.diff(xs), np.diff(ys))
+        s = np.concatenate([[0], np.cumsum(seg)])
+        others = unary_union([obstacles] + [LineString(np.column_stack(arcs[j])) for j in arcs if j != k]
+                             + [Point(q).buffer(140e3) for q in placed])
+        eg = min(end_gap, 0.15 * s[-1])
+        best, best_d, best_q = None, -1.0, None
+        for i in range(1, len(s) - 1):
+            if not (eg + badge_gap < s[i] < s[-1] - eg - badge_gap):
+                continue
+            tx, ty = xs[i + 1] - xs[i - 1], ys[i + 1] - ys[i - 1]
+            tn = np.hypot(tx, ty)
+            for off in (0.0, 30e3, -30e3):
+                q = (xs[i] + off * ty / tn, ys[i] - off * tx / tn)
+                d_ = others.distance(Point(q)) - 0.3 * abs(off)
+                if d_ > best_d:
+                    best, best_d, best_q = i, d_, q
+        sb = s[best]
+        for lo, hi in ((eg, sb - badge_gap), (sb + badge_gap, s[-1] - eg)):
+            m = (s >= lo) & (s <= hi)
+            ax.plot(xs[m], ys[m], **kw)
+        placed.append(best_q)
+        ax.text(best_q[0], best_q[1], str(k + 1), ha="center", va="center", fontsize=7, zorder=8,
+                bbox=dict(boxstyle="circle,pad=0.18", fc="white", ec=kw.get("color", "k"), lw=0.9))
+
+
+def fig_map_network():
+    """Study area: the 27 zones of the graph by the carbon cost in dispatch, the 58 interconnections and the charged
+    links of Great Britain and Serbia (a), and the links whose outages test the model (b). Lines join zone points and
+    do not trace the cables."""
+    from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+    z, bg, to3035 = _zones()
+    edges = load("gnn/meta_v4.json")["edges"]
+    group = {n: "eu" for n in ZONE_ORDER}
+    group.update(GB="gb", RS="rs", BA="none", ME="none", MK="none")
+    fill = {"eu": "#c6d9ea", "gb": "#E69F00", "rs": "#8a3200", "none": "#9a9a9a"}
+    xlim, ylim = (2.6e6, 6.3e6), (1.5e6, 4.95e6)
+    fig, axes = plt.subplots(1, 2, figsize=(190 * MM, 118 * MM), gridspec_kw={"wspace": 0.03})
+    fig.subplots_adjust(left=0.01, right=0.99, top=0.95, bottom=0.25)
+    for k, ax in enumerate(axes):
+        _base(ax, bg, xlim, ylim)
+        zc = _clip(z, xlim, ylim)
+        for g_, col in fill.items():
+            sel = zc[zc["zone"].map(group) == g_]
+            sel.plot(ax=ax, color=col if k == 0 else "#c6d9ea", edgecolor="white", lw=0.5)
+        if k == 0:                                     # the full network in (a); (b) shows only the tested links
+            for a, b in edges:
+                _link(ax, a, b, to3035, arrowstyle="-", color="#8c8c8c", lw=0.45, zorder=3)
+        for code in ZONE_ORDER:
+            x, y = _pt(code, to3035)
+            _halo(ax.text(x, y, code, ha="center", va="center", fontsize=7, zorder=6))
+    ax = axes[0]
+    for a, b in CHARGED_LINKS:
+        col = OI["orange"] if a == "GB" else OI["verm"]
+        _link(ax, a, b, to3035, rad=0.12, arrowstyle="-|>,head_length=3.2,head_width=1.8", color=col, lw=1.6,
+              zorder=5, path_effects=[pe.withStroke(linewidth=3.2, foreground="white")])
+    ax.set_title("(a) Zones by carbon cost in dispatch, charged links", fontsize=8)
+    ax.legend(handles=[Patch(facecolor=fill["eu"], label="EU allowance price"),
+                       Patch(facecolor=fill["gb"], label="UK allowance + Carbon Price Support (GB)"),
+                       Patch(facecolor=fill["rs"], label="Nominal carbon cost (RS)"),
+                       Patch(facecolor=fill["none"], label="No carbon price in dispatch (BA, ME, MK)"),
+                       Line2D([], [], color="#8c8c8c", lw=0.6, label="Zone-pair connection (58)"),
+                       Line2D([], [], color=OI["orange"], lw=1.6, marker=">", ms=4, label="Charged export link, GB"),
+                       Line2D([], [], color=OI["verm"], lw=1.6, marker=">", ms=4, label="Charged export link, RS")],
+              loc="upper left", bbox_to_anchor=(0.02, -0.01), ncol=1, fontsize=7, frameon=False,
+              handlelength=2.2, columnspacing=1.2)
+    ax = axes[1]
+    for a, b in (("GB", "NL"), ("GB", "BE")):
+        _link(ax, a, b, to3035, rad=0.12, arrowstyle="-", color=OI["blue"], lw=2.4, zorder=5)
+    _link(ax, "RS", "HU", to3035, rad=0.0, arrowstyle="-", color=OI["purple"], lw=2.2, ls=(0, (4, 1.2, 1, 1.2)),
+          zorder=5)
+    from shapely.geometry import LineString, Point
+    from shapely.ops import unary_union
+    zc, bc = _clip(z, xlim, ylim), _clip(bg, xlim, ylim)
+    obstacles = unary_union(list(zc.geometry.boundary) + list(bc.geometry.boundary)
+                            + [Point(_pt(c, to3035)).buffer(70e3) for c in ZONE_ORDER]
+                            + [LineString(np.column_stack(_bezier(a, b, to3035, r_))) for a, b, r_ in
+                               (("GB", "NL", 0.12), ("GB", "BE", 0.12), ("RS", "HU", 0.0))])
+    _numbered_arcs(ax, HELD_OUT_ORDER, to3035, obstacles, color=OI["green"], lw=1.4, ls=(0, (3, 1.6)), zorder=5)
+    ax.set_title("(b) Links whose outages test the model", fontsize=8)
+    key = [Line2D([], [], color=OI["blue"], lw=2.4, label="Focal links, BritNed (GB–NL) and Nemo Link (GB–BE)"),
+           Line2D([], [], color=OI["purple"], lw=2.2, ls=(0, (4, 1.2, 1, 1.2)), label="Serbia–Hungary tie lines"),
+           Line2D([], [], color=OI["green"], lw=1.4, ls=(0, (3, 1.6)), label="Held-out HVDC links, outages from July 2023:")]
+    leg = ax.legend(handles=key, loc="upper center", bbox_to_anchor=(0.5, -0.01), ncol=1, fontsize=7, frameon=False,
+                    handlelength=2.2)
+    names = [f"{n} {HELD_OUT[(a, b)]} ({a}–{b})" for n, (a, b) in enumerate(HELD_OUT_ORDER, start=1)]
+    for c, col in enumerate((names[:5], names[5:])):
+        ax.text(0.08 + 0.48 * c, -0.165, "\n".join(col), transform=ax.transAxes, ha="left", va="top", fontsize=7,
+                linespacing=1.25)
+    save(fig, "fig_map_network", tight=False)
+
+
+# label position of each zone on the response maps (lon, lat); NL, BE and BG are moved into the sea with a leader
+# line, and the GB label sits over Scotland, clear of the removed link
+RESP_LABEL = {"NL": (4.6, 55.4), "BE": (0.6, 49.1), "BG": (29.6, 43.6), "GB": (-3.6, 56.9), "RS": (16.2, 41.6)}
+NO_LEADER = {"GB"}
+
+
+def fig_map_response():
+    """Emission change of every zone per delivered MWh removed from each charged border, January-June 2026, network
+    model (mean over trained models; charged_summary.json r_by_zone). Zones with a decrease are hatched; the exporter,
+    the importer and the three third zones with the largest responses are labelled, as in fig_netresp."""
+    from matplotlib import colors
+    from matplotlib.cm import ScalarMappable
+    z, bg, to3035 = _zones()
+    d = load("gnn/netresp_r2_v4/charged_summary.json")
+    norm = colors.AsinhNorm(linear_width=0.02, vmin=-0.25, vmax=0.25)
+    cmap = plt.get_cmap("RdBu_r")
+    xlim, ylim = (2.65e6, 6.2e6), (1.5e6, 4.35e6)
+    fig, axes = plt.subplots(1, 3, figsize=(190 * MM, 64 * MM), gridspec_kw={"wspace": 0.03})
+    fig.subplots_adjust(left=0.0, right=1.0, top=0.92, bottom=0.2)
+    for ax, (b, lab) in zip(axes, (("GB_NL", "(a) GB→NL"), ("GB_BE", "(b) GB→BE"), ("RS_HU", "(c) RS→HU"))):
+        s = d[f"{b}|graph|charged"]
+        r = s["r_by_zone"]
+        x, m = b.split("_")
+        _base(ax, bg, xlim, ylim)
+        zz = _clip(z, xlim, ylim)
+        zz["r"] = zz["zone"].map(r)
+        zz["rgba"] = [cmap(norm(v)) for v in zz["r"]]
+        zz.plot(ax=ax, color=list(zz["rgba"]), edgecolor="#a0a0a0", lw=0.35)
+        for _, row in zz[zz["r"] <= -0.01].iterrows():      # decrease: hatched, light or dark hatch by fill lightness
+            rr, gg, bb, _a = row["rgba"]
+            light = 0.299 * rr + 0.587 * gg + 0.114 * bb > 0.55
+            _hatch(ax, row.geometry, "#303030" if light else "white")
+        _link(ax, x, m, to3035, arrowstyle="-", color="k", lw=1.1, ls=(0, (2.5, 1.5)), zorder=5)
+        (xa, ya), (xb, yb) = _pt(x, to3035), _pt(m, to3035)
+        ax.plot((xa + xb) / 2, (ya + yb) / 2, marker="x", ms=5, mew=1.3, color="k", zorder=6)
+        top = [k for k, _ in sorted(s["third_by_zone"].items(), key=lambda kv: -abs(kv[1]))[:3]]
+        for code in [x, m] + top:
+            v = r[code]
+            px, py = _pt(code, to3035)
+            if code in RESP_LABEL:
+                lx, ly = to3035.transform(*RESP_LABEL[code])
+                if code not in NO_LEADER:
+                    ax.plot([px, lx], [py, ly], color="k", lw=0.5, zorder=6)
+            else:
+                lx, ly = px, py
+            _halo(ax.text(lx, ly, f"{code} {v:+.2f}".replace("-", "−"), ha="center", va="center", fontsize=7,
+                          zorder=7))
+        ax.set_title(lab, fontsize=8)
+    cax = fig.add_axes([0.28, 0.1, 0.44, 0.035])
+    cb = fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), cax=cax, orientation="horizontal")
+    ticks = [-0.2, -0.1, -0.05, -0.02, 0, 0.02, 0.05, 0.1, 0.2]
+    cb.set_ticks(ticks)
+    cb.set_ticklabels([f"{t:g}".replace("-", "−") for t in ticks])
+    cb.ax.tick_params(labelsize=7)
+    cb.set_label("Emission change, t CO₂ per MWh removed (asinh scale; hatched: decrease of at least 0.01)",
+                 fontsize=7.5)
+    save(fig, "fig_map_response")
+
+
 def main():
-    for f in (fig_trading, fig_onset, fig_outage_v2, fig_outage_multi, fig_netresp, fig_rule_regret_net, fig_regime_net):
+    for f in (fig_trading, fig_onset, fig_outage_v2, fig_outage_multi, fig_netresp, fig_rule_regret_net, fig_regime_net,
+              fig_map_network, fig_map_response):
         f()
         print("wrote", f.__name__)
 

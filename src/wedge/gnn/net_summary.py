@@ -9,6 +9,7 @@ min, max]:
   E_x = -r_x, E_m = r_m, third = sum of r over third zones, third_EU = over third zones at the EU allowance price,
   network = sum of r over all zones
   third_by_zone    third zones with |r| >= 0.01 (mean over models)
+  r_by_zone, rho_by_zone   r and rho of every zone (mean over models), drawn on the maps of figures.py
   two_zone         accounting comparator from the same local responses m_i (mslope): E_x = m_x / eta, E_m = m_m,
                    network = E_m - E_x
 Usage: WEDGE_GNN_SPEC=v4 NETRESP_TAG=r2 python src/wedge/gnn/net_summary.py
@@ -63,6 +64,9 @@ def main():
                 bz = (rs[..., third].mean(0) * w[:, None]).sum(0)
                 o["third_by_zone"] = {fe.nodes[third[k]]: round(float(v), 3) for k, v in enumerate(bz)
                                       if abs(v) >= 0.01}
+                # every zone, for the maps: emission response r and output response rho (mean over models)
+                o["r_by_zone"] = {n: round(float(v), 4) for n, v in zip(fe.nodes, (rs.mean(0) * w[:, None]).sum(0))}
+                o["rho_by_zone"] = {n: round(float(v), 4) for n, v in zip(fe.nodes, (rhos.mean(0) * w[:, None]).sum(0))}
                 ex2, em2 = float(w @ ms[sel, xi]) / ETA[b], float(w @ ms[sel, mi])
                 o["two_zone"] = {"E_x": round(ex2, 3), "E_m": round(em2, 3), "network": round(em2 - ex2, 3)}
                 # exchange with zones outside the graph: total residual shift (1 - 1/eta) minus the summed output change
